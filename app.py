@@ -338,7 +338,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         brand: Brand name for top bar
         product_clean: Cleaned product name (without brand)
         batch_no: Batch/lot number
-        qty: Quantity to display
+        qty: Units Per Case from Products table (displayed as "Case Qty")
         package_label: UID for QR code and center display
         category: Product category for top bar
         created_date: Package creation date
@@ -495,12 +495,15 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         zpl.append(f"^CF0,{font_large_plus}")
         zpl.append(f"^FO{left_margin},{bottom_y}^FDBatch: {batch_display}^FS")
     
-    # --- CASE QUANTITY (bottom right) - ALWAYS shows "Case Qty:" ---
-    qty_num = safe_numeric(qty, 0)
-    if qty_num == int(qty_num):
-        qty_display = f"Case Qty: {int(qty_num)}"
+    # --- CASE QUANTITY (bottom right) - Shows Units Per Case from Products table ---
+    if qty is not None:
+        qty_num = safe_numeric(qty, 0)
+        if qty_num == int(qty_num):
+            qty_display = f"Case Qty: {int(qty_num)}"
+        else:
+            qty_display = f"Case Qty: {qty_num:.1f}"
     else:
-        qty_display = f"Case Qty: {qty_num:.1f}"
+        qty_display = "Case Qty: N/A"
     
     qty_width = len(qty_display) * (font_large_plus // 2)
     qty_x = width_dots - right_margin - qty_width
@@ -532,14 +535,18 @@ def generate_labels_for_row(row, label_mode):
     if quantity <= 0:
         return []
     
+    # Case Qty always shows Units Per Case from Products table
+    # If Units Per Case is missing, still generate label but show the value we have
+    units_per_case_display = units_per_case if units_per_case > 0 else None
+    
     if label_mode == "package":
-        # Single label showing total package quantity
+        # Single label for the package
         zpl = generate_label_zpl(
             product_name=row.get("Product Name", ""),
             brand=row.get("Brand", ""),
             product_clean=row.get("Product (Clean)", ""),
             batch_no=row.get("Batch No", ""),
-            qty=quantity,
+            qty=units_per_case_display,
             package_label=row.get("Package Label", ""),
             category=row.get("Category", ""),
             created_date=created_date
@@ -547,16 +554,16 @@ def generate_labels_for_row(row, label_mode):
         labels.append(zpl)
     
     elif label_mode == "case" and units_per_case > 0:
-        # Multiple labels, one per case
-        case_quantities = calculate_individual_case_quantities(quantity, units_per_case)
+        # Multiple labels, one per case - all show same Units Per Case
+        num_cases = calculate_case_labels_needed(quantity, units_per_case)
         
-        for case_qty in case_quantities:
+        for _ in range(num_cases):
             zpl = generate_label_zpl(
                 product_name=row.get("Product Name", ""),
                 brand=row.get("Brand", ""),
                 product_clean=row.get("Product (Clean)", ""),
                 batch_no=row.get("Batch No", ""),
-                qty=case_qty,
+                qty=units_per_case,  # Always show Units Per Case
                 package_label=row.get("Package Label", ""),
                 category=row.get("Category", ""),
                 created_date=created_date
@@ -944,7 +951,7 @@ def main():
                     label_mode = st.selectbox(
                         "Label Mode",
                         ["1 Label per Package", "1 Label per Case"],
-                        help="Package: 1 label showing total qty. Case: Multiple labels, one per case."
+                        help="Package: 1 label per package. Case: Multiple labels based on package qty ÷ units per case. All labels show Units Per Case."
                     )
                     label_mode_key = "package" if "Package" in label_mode else "case"
                 
@@ -1103,8 +1110,8 @@ def main():
                 - 📅 **Quick Date Selection** - Today, Yesterday, This Week buttons
                 - 🏢 **Vendor Filtering** - Filter by vendor from Products data
                 - 📦 **Two Label Modes:**
-                    - **1 Label per Package** - Single label showing total quantity
-                    - **1 Label per Case** - Multiple labels based on Units Per Case
+                    - **1 Label per Package** - Single label per package
+                    - **1 Label per Case** - Multiple labels (qty ÷ units per case)
                 
                 **Label Layout (4" x 2"):**
                 - Top: Black bar with Brand (white) and Category
