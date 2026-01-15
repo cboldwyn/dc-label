@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.0.0 - Distribution Center Package Label Generator
+Version 1.1.0 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,12 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.1.0 (2025-01-15)
+- Added weekly rotating symbol (18-week cycle)
+- Symbols help distinguish batches received at different times
+- Icons: house, sun, tree, car, cloud, envelope, ladder, key, anchor,
+         lightbulb, lock, umbrella, flag, trashcan, clock, mug, book, rabbit
+
 v1.0.0 (2025-12-19)
 - Initial release
 - Package and Products CSV integration
@@ -37,12 +43,164 @@ import streamlit.components.v1 as components
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # Label specifications for ZD621 printer
 LABEL_WIDTH = 4.0    # inches
 LABEL_HEIGHT = 2.0   # inches
 DPI = 203            # dots per inch
+
+# Week symbol configuration
+WEEK_SYMBOL_SIZE = 40  # Size in dots (40x40 pixels)
+
+# Pre-converted ZPL hex data for 18 rotating weekly symbols
+# Format: ^GFA,total_bytes,total_bytes,bytes_per_row,hex_data
+WEEK_ICONS = {
+    1: {
+        "name": "house",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "00000000000000000000000008000000000C0000000016000000006300000000C18000000180D6000001007E000002007E00000C007E000018007E000030007E000020007E00004000018001800000C00300000020077FFFFF7007FFFFFFF001800000C001800000C001800000C001800000C001800000C001800000C00180FF80C00180C180C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C001FFFFFFC000FFFFFF800000000000"
+    },
+    2: {
+        "name": "sun",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000000000000000080000000008000000000800000000080000000008004001800800C000400801800020000200001800040000003E040000007F00000000C08000000100400000020020000006001000000C001800000C0018001FCC0019FE000C001800000C001800000400180000020030000001004000000080800000007F800000003F000000180004000020000200004008010000C00800C00180080040000008000000000800000000080000000008000000000800000000000000"
+    },
+    3: {
+        "name": "tree",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "000000000000000000000000000000000000000000000000000000FF800000030060000007007000000C0008000018000400002000020000400001000040000180004000018001800000C001800000C001800000C001800000C001800000C001800000C000400001800040000180006000030000300002000018000400000CFF98000003FFF0000003FFE0000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000FF80000000000000"
+    },
+    4: {
+        "name": "car",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007FFF000000FFFF8000030000600004000018003800000E0030000007004000000100400000010040000001004000000100438000E10043C001E10044200319007FFFFFFF001818060C001810040C000810060C00042003180003C001E00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    5: {
+        "name": "cloud",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000003E000000007F0000000180C0000006002000000C00100000EC00180001F80018000613000C00181087E4003010481C003010680C0020107004004010700600400CB01900400C90190040049031004002B02100400190C100300000010030000002001FFFFFFE000FFFFFFE000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    6: {
+        "name": "envelope",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "000000000000000000000000000000000000000000000000000000000000000000000007FFFFFFF03FFFFFFFFE180000000E3400000016338000006631C00000E6304000010630200002063018000406300C000806300600100630020020063001C0C0063000630006300036000630001C00063000080006300000000630000000063000000006300000000630000000063000000006300000000630000000063FFFFFFFFE1FFFFFFFFC000000000000000000000000000000000000000000000000000000000000"
+    },
+    7: {
+        "name": "ladder",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000200002000020000200002000020000200002000020000200003FFFFE00003FFFFE00002000020000200002000020000200002000020000200002000020000200003FFFFE00003000020000200002000020000200002000020000200002000020000200003FFFFE00003FFFFE00002000020000200002000020000200002000020000200002000020000200003FFFFE00003000020000200002000020000200002000020000200002000020000200002000020000200002000000000000"
+    },
+    8: {
+        "name": "key",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "00000000000000000000000000000000000000000000000000007E000000008100000001018000000200C000000400600000040060000004007FFFF004007FFFF004006018C004006018C00300C018C001818018C000FF001800007E000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    9: {
+        "name": "anchor",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000001C000000003E000000006300000000C880000000C880000000C880000000C9800000006B000000001E000000000800000007FFF0000007FFF80000000800000000080000000008000000000800000000080000000008000000000800000000080000000008000000000800000000080000000008000000000800000000080000040008001004000800100300080020018008004000E00803800060080300001E003C000001FFC0000000000000000000000000000000000000000000"
+    },
+    10: {
+        "name": "lightbulb",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000003E000000007F0000000180C00000020030000004001800000800080000180004000018000400002000020000200002000020000200002000020000200002000020000200001000040000180004000018000C00000C0018000002003000000180C0000001FFC0000001FFC00000010040000001FFC00000010040000001A6C0000001FFC00000010040000001FFC0000000C180000000C080000000C1800000003F000000000000000000000000000000000000000000000000000000"
+    },
+    11: {
+        "name": "lock",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "000000000000000000000000000000000000000000000000000000FF800000030060000007007000000C0008000018000400002000020000200002000020000200002000020000200002000020000200002000020000FFFFFF8001FFFFFFC001800000C001800000C001800000C001800000C001800000C001801E00C001803F00C001807F00C001807F00C001803F00C001801C00C001800000C001800000C001800000C001800000C001800000C001FFFFFFC00000000000000000000000000000000000000000"
+    },
+    12: {
+        "name": "umbrella",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "00000000000000000000000000000000000000000000000000000000000000000000000001FFC0000001FFC000001E003C00006000030000800000C0010000006002000000200400000010080000000C080000000C1000000004300000000630000000063FFFFFFFFE00000C000000000800000000080000000008000000000800000000080000000008000000000800000000080000000008000000000800000000080000000008000000010840000001084000000080800000007F800000003F00000000000000"
+    },
+    13: {
+        "name": "flag",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000000000000180000000018000000000C000000001BC00000001BFC000000183E0000001801E0000018003C0000180003E00018000118001800001C00180001E00018001F00001801E00000181FC00000181E0000001BE00000000C00000000180000000018000000001800000000180000000018000000001800000000180000000018000000001800000000180000000018000000001800000000180000000018000000001800000000180000000018000000000800000000000000000"
+    },
+    14: {
+        "name": "trashcan",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "000000000000000000000000000000000000000000000000000001FFC000000180400000010040000001004000000100400000FFFFFFC0003000030000200002000020000200002000020000210842000021084200002108420000210842000021084200002108420000210842000021084200002108420000210842000021084200002108420000210842000021084200002108420000210842000020000200002000020000200002000020000200003FFFFE000000000000000000000000000000000000000000"
+    },
+    15: {
+        "name": "clock",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000007F80000000FF8000000F0078000018000400006000030000E000038001800800400300080020030008002006000800100C00080018080008000C080008000C080008000C100008000630001C000630001E000630007F000630003FFE0630007F000630003E000630001C00063000000006080000000C080000000C080000000C0800000008040000001003000000200300000020010000004000800000C000600003000018000400000F0078000007FFF0000000FF80000000000000"
+    },
+    16: {
+        "name": "mug",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "000000000000000000000000000000000000000000000000000000000000000000000000FFFFFE0001FFFFFE00018000020001FFFFFE0001800002000180000300018000038001800002400180000220018000022001800002300180000210018000021001800002100180000210018000021001800002100180000220018000022001800002400180000380018000030001800002000180000200018000020001FFFFFE0000FFFFFE00000000000000000000000000000000000000000000000000000000000000"
+    },
+    17: {
+        "name": "book",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000000000000000000000000000000000FFFFFE00018C0003C0018C0003F0018C000230018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C00026001FFFFFF800000000000000000000000000000000000000000"
+    },
+    18: {
+        "name": "rabbit",
+        "width": 40,
+        "height": 40,
+        "bytes_per_row": 5,
+        "total_bytes": 200,
+        "hex": "0000000000000000000000020020000006003000000D0048000018C084000018C084000010410600002063020000206302000020630200002063020000206302000020630200002063020000203F02000019C0C400001380E4000006003000000C00180000180004000018000400001000060000200002000020000200002000020000200002000020000200002000020000180004000018000400000C000800000600100000020020000001C0C00000007F00000000000000000000000000000000000000000000"
+    },
+}
 
 
 # =============================================================================
@@ -88,13 +246,6 @@ def safe_numeric(value, default=0.0):
     Safely convert a value to a numeric type.
     
     Handles strings, NaN, None, and empty values gracefully.
-    
-    Args:
-        value: The value to convert (can be str, float, int, None, etc.)
-        default: Value to return if conversion fails
-        
-    Returns:
-        Numeric value or default
     """
     if pd.isna(value) or value is None or value == "":
         return default
@@ -114,46 +265,26 @@ def safe_numeric(value, default=0.0):
 def extract_brand(product_name):
     """
     Extract brand and product name from a full product string.
-    
-    Uses the first hyphen as the delimiter between brand and product.
-    Example: "Camino - Strawberry Sunset" -> ("Camino", "Strawberry Sunset")
-    
-    Args:
-        product_name: Full product name string
-        
-    Returns:
-        Tuple of (brand, product_remainder)
+    Uses the first hyphen as the delimiter.
     """
     if pd.isna(product_name) or not product_name:
         return ("", str(product_name) if product_name else "")
     
     product_str = str(product_name).strip()
     
-    # Try " - " delimiter first (more common format)
     if " - " in product_str:
         parts = product_str.split(" - ", 1)
         return (parts[0].strip(), parts[1].strip())
     
-    # Fall back to "-" without spaces
     if "-" in product_str:
         parts = product_str.split("-", 1)
         return (parts[0].strip(), parts[1].strip())
     
-    # No delimiter found - return empty brand
     return ("", product_str)
 
 
 def load_csv(uploaded_file, file_type):
-    """
-    Load a CSV file into a DataFrame with all columns as strings.
-    
-    Args:
-        uploaded_file: Streamlit UploadedFile object
-        file_type: Description of file type for error messages
-        
-    Returns:
-        DataFrame or None if loading fails
-    """
+    """Load a CSV file into a DataFrame with all columns as strings."""
     try:
         uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file, dtype=str)
@@ -166,49 +297,21 @@ def load_csv(uploaded_file, file_type):
 
 
 def sanitize_qr_data(package_label):
-    """
-    Clean and validate package label for QR code generation.
-    
-    Args:
-        package_label: Raw package label value
-        
-    Returns:
-        Cleaned string safe for QR encoding
-    """
+    """Clean and validate package label for QR code generation."""
     if pd.isna(package_label) or package_label is None:
         return ""
     return str(package_label).strip()
 
 
 def calculate_case_labels_needed(quantity, units_per_case):
-    """
-    Calculate how many case labels are needed for a package.
-    
-    Args:
-        quantity: Total package quantity
-        units_per_case: Units that fit in one case
-        
-    Returns:
-        Number of labels needed (rounded up)
-    """
+    """Calculate how many case labels are needed for a package."""
     if quantity <= 0 or units_per_case <= 0:
         return 0
     return math.ceil(quantity / units_per_case)
 
 
 def calculate_individual_case_quantities(quantity, units_per_case):
-    """
-    Calculate the quantity for each individual case label.
-    
-    Handles partial cases (last case may have fewer units).
-    
-    Args:
-        quantity: Total package quantity
-        units_per_case: Units that fit in one case
-        
-    Returns:
-        List of quantities for each case label
-    """
+    """Calculate the quantity for each individual case label."""
     if quantity <= 0 or units_per_case <= 0:
         return []
     
@@ -227,31 +330,81 @@ def calculate_individual_case_quantities(quantity, units_per_case):
 
 
 # =============================================================================
+# WEEK SYMBOL FUNCTIONS
+# =============================================================================
+
+def get_week_number(date_value=None):
+    """
+    Get the week number (1-18) for symbol rotation based on date.
+    
+    Uses the package created date if provided, otherwise uses current date.
+    Symbols rotate on an 18-week cycle.
+    
+    Args:
+        date_value: Optional date string or datetime. If None, uses today.
+        
+    Returns:
+        int: Week number 1-18 for symbol selection
+    """
+    try:
+        if date_value is not None and pd.notna(date_value):
+            date_obj = pd.to_datetime(date_value)
+        else:
+            date_obj = datetime.now()
+        
+        # Get ISO week number (1-52/53)
+        iso_week = date_obj.isocalendar()[1]
+        
+        # Convert to 1-18 cycle
+        return ((iso_week - 1) % 18) + 1
+    except (ValueError, TypeError):
+        return 1  # Default to week 1 symbol
+
+
+def get_week_icon_name(week_num):
+    """Get the icon name for a given week number."""
+    week_num = ((week_num - 1) % 18) + 1  # Ensure 1-18 range
+    return WEEK_ICONS.get(week_num, {}).get("name", "unknown")
+
+
+def generate_week_symbol_zpl(week_num, x, y):
+    """
+    Generate ZPL commands to draw the weekly symbol at specified position.
+    
+    Args:
+        week_num: Week number 1-18 (cycles automatically)
+        x: X position in dots
+        y: Y position in dots
+        
+    Returns:
+        String of ZPL commands for the graphic
+    """
+    # Ensure week_num is in 1-18 range
+    week_num = ((week_num - 1) % 18) + 1
+    
+    icon = WEEK_ICONS.get(week_num)
+    if not icon:
+        return ""
+    
+    # ZPL ^GF command: Graphic Field
+    # Format: ^GFA,total_bytes,total_bytes,bytes_per_row,hex_data
+    zpl = f"^FO{x},{y}^GFA,{icon['total_bytes']},{icon['total_bytes']},{icon['bytes_per_row']},{icon['hex']}^FS"
+    
+    return zpl
+
+
+# =============================================================================
 # DATA PROCESSING
 # =============================================================================
 
 def merge_data_sources(packages_df, products_df):
     """
     Merge Packages and Products data to create the working dataset.
-    
-    Joins on Distru Product (packages) -> Name (products) to get:
-    - Units Per Case for case label calculations
-    - Vendor for filtering
-    - Category fallback from products
-    
-    Args:
-        packages_df: Raw packages DataFrame
-        products_df: Raw products DataFrame
-        
-    Returns:
-        Merged and processed DataFrame or None if error
     """
     try:
-        # Store raw data in session state
         st.session_state.packages_data = packages_df
         st.session_state.products_data = products_df
         
-        # Select columns needed from products and merge
         products_subset = products_df[["Name", "Units Per Case", "Category", "Vendor"]].copy()
         products_subset = products_subset.rename(columns={"Category": "Product_Category"})
         
@@ -263,21 +416,17 @@ def merge_data_sources(packages_df, products_df):
             suffixes=("", "_products")
         )
         
-        # Extract brand and clean product name
         merged_df["Brand"] = merged_df["Distru Product"].apply(lambda x: extract_brand(x)[0])
         merged_df["Product_Name_Clean"] = merged_df["Distru Product"].apply(lambda x: extract_brand(x)[1])
         
-        # Parse creation date
         merged_df["Created_Date"] = pd.to_datetime(
             merged_df["Created in Distru At (UTC)"],
             errors="coerce"
         ).dt.date
         
-        # Convert numeric columns
         merged_df["Quantity_Num"] = merged_df["Quantity"].apply(safe_numeric)
         merged_df["Units_Per_Case_Num"] = merged_df["Units Per Case"].apply(safe_numeric)
         
-        # Calculate case labels needed
         merged_df["Case_Labels_Needed"] = merged_df.apply(
             lambda row: calculate_case_labels_needed(
                 row["Quantity_Num"],
@@ -286,10 +435,8 @@ def merge_data_sources(packages_df, products_df):
             axis=1
         )
         
-        # Use package Category if available, fallback to product category
         merged_df["Display_Category"] = merged_df["Category"].fillna(merged_df["Product_Category"])
         
-        # Select and rename columns for the final dataset
         result_df = merged_df[[
             "Distru Product", "Brand", "Product_Name_Clean", "Package Label",
             "Quantity", "Quantity_Num", "Units Per Case", "Units_Per_Case_Num",
@@ -330,7 +477,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     |       1A406030002C881000003648                      |QR ||
     |         Created: 09/09/2024                         |   ||
     |                                                      +---+|
-    | Batch: ABC-123                              Case Qty: 25  |
+    | Batch: ABC-123    [ICON]                    Case Qty: 25  |
     +-----------------------------------------------------------+
     
     Args:
@@ -341,7 +488,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         qty: Units Per Case from Products table (displayed as "Case Qty")
         package_label: UID for QR code and center display
         category: Product category for top bar
-        created_date: Package creation date
+        created_date: Package creation date (also used for week symbol selection)
         
     Returns:
         Complete ZPL code string for the label
@@ -350,11 +497,11 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     width_dots = int(LABEL_WIDTH * DPI)   # 812 dots
     
     # Font size definitions (in dots)
-    font_uid = 46           # UID display (larger for visibility)
-    font_large = 32         # Brand, product name
-    font_large_plus = 28    # Batch, quantity
-    font_medium = 24        # Category
-    font_small_plus = 22    # Created date
+    font_uid = 46
+    font_large = 32
+    font_large_plus = 28
+    font_medium = 24
+    font_small_plus = 22
     
     # Layout positioning (in dots)
     left_margin = 20
@@ -411,7 +558,6 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         if current_line:
             product_lines.append(current_line)
         
-        # Limit to 2 lines, truncate second line if needed
         if len(product_lines) > 2:
             product_lines = product_lines[:2]
             if len(product_lines[1]) > max_chars - 3:
@@ -431,6 +577,9 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         except (ValueError, TypeError):
             created_date_display = str(created_date)
     
+    # Get week number for symbol
+    week_num = get_week_number(created_date)
+    
     # Build ZPL command list
     zpl = []
     zpl.append("^XA")  # Start format
@@ -441,7 +590,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     # Brand text (white on black via field reverse)
     brand_text_y = brand_bar_y + (brand_bar_height - font_large) // 2
     if brand_display:
-        zpl.append("^FR")  # Field reverse for white text
+        zpl.append("^FR")
         zpl.append(f"^CF0,{font_large}")
         zpl.append(f"^FO{left_margin},{brand_text_y}^FR^FD{brand_display}^FS")
     
@@ -464,10 +613,8 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     # --- UID (left-of-center to avoid QR code, larger font) ---
     if qr_data:
         uid_width = len(qr_data) * (font_uid // 2)
-        # Shift left: center within the area left of QR code (qr_x - margin)
-        available_width = qr_x - left_margin - 20  # Leave gap before QR
+        available_width = qr_x - left_margin - 20
         uid_x = left_margin + (available_width - uid_width) // 2
-        # Ensure minimum left margin
         if uid_x < left_margin:
             uid_x = left_margin
         zpl.append(f"^CF0,{font_uid}")
@@ -477,7 +624,6 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     if created_date_display:
         date_text = f"Created: {created_date_display}"
         date_width = len(date_text) * (font_small_plus // 2)
-        # Center in same area as UID (left of QR code)
         available_width = qr_x - left_margin - 20
         date_x = left_margin + (available_width - date_width) // 2
         if date_x < left_margin:
@@ -495,7 +641,15 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         zpl.append(f"^CF0,{font_large_plus}")
         zpl.append(f"^FO{left_margin},{bottom_y}^FDBatch: {batch_display}^FS")
     
-    # --- CASE QUANTITY (bottom right) - Shows Units Per Case from Products table ---
+    # --- WEEK SYMBOL (bottom center) ---
+    # Position between batch and case qty
+    symbol_x = (width_dots // 2) - (WEEK_SYMBOL_SIZE // 2)
+    symbol_y = bottom_y - 4  # Slight vertical adjustment to center with text
+    week_symbol_zpl = generate_week_symbol_zpl(week_num, symbol_x, symbol_y)
+    if week_symbol_zpl:
+        zpl.append(week_symbol_zpl)
+    
+    # --- CASE QUANTITY (bottom right) ---
     if qty is not None:
         qty_num = safe_numeric(qty, 0)
         if qty_num == int(qty_num):
@@ -516,16 +670,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
 
 
 def generate_labels_for_row(row, label_mode):
-    """
-    Generate all labels needed for a single package row.
-    
-    Args:
-        row: DataFrame row containing package data
-        label_mode: "package" for 1 label or "case" for multiple labels
-        
-    Returns:
-        List of ZPL strings (one per label)
-    """
+    """Generate all labels needed for a single package row."""
     labels = []
     
     quantity = safe_numeric(row.get("Quantity_Num", 0))
@@ -535,12 +680,9 @@ def generate_labels_for_row(row, label_mode):
     if quantity <= 0:
         return []
     
-    # Case Qty always shows Units Per Case from Products table
-    # If Units Per Case is missing, still generate label but show the value we have
     units_per_case_display = units_per_case if units_per_case > 0 else None
     
     if label_mode == "package":
-        # Single label for the package
         zpl = generate_label_zpl(
             product_name=row.get("Product Name", ""),
             brand=row.get("Brand", ""),
@@ -554,7 +696,6 @@ def generate_labels_for_row(row, label_mode):
         labels.append(zpl)
     
     elif label_mode == "case" and units_per_case > 0:
-        # Multiple labels, one per case - all show same Units Per Case
         num_cases = calculate_case_labels_needed(quantity, units_per_case)
         
         for _ in range(num_cases):
@@ -563,7 +704,7 @@ def generate_labels_for_row(row, label_mode):
                 brand=row.get("Brand", ""),
                 product_clean=row.get("Product (Clean)", ""),
                 batch_no=row.get("Batch No", ""),
-                qty=units_per_case,  # Always show Units Per Case
+                qty=units_per_case,
                 package_label=row.get("Package Label", ""),
                 category=row.get("Category", ""),
                 created_date=created_date
@@ -574,21 +715,9 @@ def generate_labels_for_row(row, label_mode):
 
 
 def generate_all_labels(df, label_mode):
-    """
-    Generate labels for all rows in the DataFrame.
-    
-    Sorts by Brand then Product Name for organized printing.
-    
-    Args:
-        df: Filtered DataFrame of packages
-        label_mode: "package" or "case"
-        
-    Returns:
-        List of all ZPL strings
-    """
+    """Generate labels for all rows in the DataFrame."""
     all_labels = []
     
-    # Sort for organized output
     df_sorted = df.sort_values(["Brand", "Product Name"], ascending=[True, True])
     
     for idx, row in df_sorted.iterrows():
@@ -599,16 +728,7 @@ def generate_all_labels(df, label_mode):
 
 
 def generate_filename(data, label_mode):
-    """
-    Generate a descriptive filename for the ZPL download.
-    
-    Args:
-        data: DataFrame used for label generation
-        label_mode: "package" or "case"
-        
-    Returns:
-        Filename string with timestamp
-    """
+    """Generate a descriptive filename for the ZPL download."""
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     
     brands = data["Brand"].dropna().unique()
@@ -629,17 +749,7 @@ def generate_filename(data, label_mode):
 # =============================================================================
 
 def create_browser_print_launcher(zpl_data, label_count):
-    """
-    Create an HTML component for copying ZPL to clipboard.
-    
-    Provides a user-friendly interface for getting the ZPL data
-    to send to a Zebra printer.
-    
-    Args:
-        zpl_data: Complete ZPL string for all labels
-        label_count: Number of labels for display
-    """
-    # Encode ZPL as base64 for safe embedding
+    """Create an HTML component for copying ZPL to clipboard."""
     b64_zpl = base64.b64encode(zpl_data.encode()).decode()
     
     html_content = f'''
@@ -690,7 +800,6 @@ def create_browser_print_launcher(zpl_data, label_count):
                 statusDiv.style.color = "#155724";
                 statusDiv.innerHTML = "✅ ZPL copied to clipboard!";
             }}).catch(() => {{
-                // Fallback for older browsers
                 const textarea = document.createElement("textarea");
                 textarea.value = zplData;
                 textarea.style.position = "fixed";
@@ -763,6 +872,20 @@ def main():
                 st.session_state.processed_data = processed_data
                 st.success(f"Successfully processed {len(processed_data):,} packages")
     
+    # Week symbol reference
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🗓️ Week Symbols (18-week cycle)"):
+        # Show current week symbol
+        current_week = get_week_number()
+        current_icon = get_week_icon_name(current_week)
+        st.markdown(f"**Current week:** {current_week} ({current_icon})")
+        st.markdown("---")
+        st.markdown("**Symbol Rotation:**")
+        for i in range(1, 19):
+            icon_name = WEEK_ICONS[i]["name"]
+            marker = " ← current" if i == current_week else ""
+            st.markdown(f"{i}. {icon_name}{marker}")
+    
     # Version info
     st.sidebar.markdown("---")
     st.sidebar.caption(f"Version {VERSION}")
@@ -783,7 +906,6 @@ def main():
         with tab1:
             st.header("🎯 Generate Labels")
             
-            # Filter columns
             col1, col2 = st.columns(2)
             
             # --- DATE FILTER ---
@@ -796,7 +918,6 @@ def main():
                     min_date = min(available_dates)
                     max_date = max(available_dates)
                     
-                    # Quick selection buttons
                     st.markdown("**Quick Select:**")
                     qcol1, qcol2, qcol3, qcol4 = st.columns(4)
                     
@@ -817,14 +938,12 @@ def main():
                         if st.button("🔄 All Dates", use_container_width=True):
                             st.session_state["date_selection"] = "all"
                     
-                    # Manual selection option
                     date_filter_type = st.radio(
                         "Or select manually:",
                         ["Use quick selection", "Date range", "Specific dates"],
                         horizontal=True
                     )
                     
-                    # Determine selected dates based on filter type
                     if date_filter_type == "Use quick selection":
                         selection = st.session_state.get("date_selection", "all")
                         
@@ -853,7 +972,7 @@ def main():
                         else:
                             selected_dates = list(available_dates)
                     
-                    else:  # Specific dates
+                    else:
                         selected_dates = st.multiselect(
                             "Select specific dates:",
                             options=available_dates,
@@ -889,7 +1008,6 @@ def main():
                     selected_brands = []
                     st.warning("No brands found in data")
                 
-                # Vendor filter
                 st.subheader("🏢 Filter by Vendor")
                 
                 all_vendors = sorted(processed_df["Vendor"].dropna().unique())
@@ -931,7 +1049,6 @@ def main():
             st.subheader(f"📦 Filtered Packages ({len(filtered_df):,} records)")
             
             if not filtered_df.empty:
-                # Select display columns
                 display_cols = [
                     "Brand", "Product (Clean)", "Package Label",
                     "Quantity", "Units Per Case", "Case Labels Needed",
@@ -951,13 +1068,20 @@ def main():
                     label_mode = st.selectbox(
                         "Label Mode",
                         ["1 Label per Package", "1 Label per Case"],
-                        help="Package: 1 label per package. Case: Multiple labels based on package qty ÷ units per case. All labels show Units Per Case."
+                        help="Package: 1 label per package. Case: Multiple labels based on package qty ÷ units per case."
                     )
                     label_mode_key = "package" if "Package" in label_mode else "case"
                 
                 with gen_col2:
                     st.markdown("**Label Size:**")
                     st.info(f"4\" x 2\" at {DPI} DPI")
+                    
+                    # Show week symbol for current selection
+                    if not filtered_df.empty:
+                        sample_date = filtered_df["Created At (Full)"].iloc[0]
+                        sample_week = get_week_number(sample_date)
+                        sample_icon = get_week_icon_name(sample_week)
+                        st.markdown(f"**Week Symbol:** {sample_icon} (wk {sample_week})")
                 
                 # Calculate total labels
                 if label_mode_key == "package":
@@ -1053,7 +1177,6 @@ def main():
         with tab2:
             st.header("📊 Data Overview")
             
-            # Summary metrics
             metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
             
             with metric_col1:
@@ -1068,7 +1191,6 @@ def main():
                 has_case_data = (processed_df["Units_Per_Case_Num"] > 0).sum()
                 st.metric("With Case Data", f"{has_case_data:,}")
             
-            # Charts
             chart_col1, chart_col2 = st.columns(2)
             
             with chart_col1:
@@ -1090,7 +1212,7 @@ def main():
     
     else:
         # ---------------------------------------------------------------------
-        # WELCOME SCREEN (no data loaded)
+        # WELCOME SCREEN
         # ---------------------------------------------------------------------
         if not packages_file and not products_file:
             st.info("👆 Upload Packages and Products CSV files in the sidebar to get started")
@@ -1112,12 +1234,18 @@ def main():
                 - 📦 **Two Label Modes:**
                     - **1 Label per Package** - Single label per package
                     - **1 Label per Case** - Multiple labels (qty ÷ units per case)
+                - 🗓️ **Weekly Rotating Symbols** - 18 unique icons that rotate weekly
+                    to help distinguish batches received at different times
                 
                 **Label Layout (4" x 2"):**
                 - Top: Black bar with Brand (white) and Category
                 - Middle: Product name, UID (large, left-of-center), Created date
-                - Bottom: Batch number (left), Case Qty (right)
+                - Bottom: Batch number (left), Week symbol (center), Case Qty (right)
                 - Right side: QR code with package label
+                
+                **Week Symbols (18-week cycle):**
+                house, sun, tree, car, cloud, envelope, ladder, key, anchor,
+                lightbulb, lock, umbrella, flag, trashcan, clock, mug, book, rabbit
                 """)
         elif packages_file and products_file:
             st.info("Click the 'Process Data' button in the sidebar to analyze your files")
