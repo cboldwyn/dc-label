@@ -715,10 +715,11 @@ def generate_labels_for_row(row, label_mode):
 
 
 def generate_all_labels(df, label_mode):
-    """Generate labels for all rows in the DataFrame."""
+    """Generate labels for all rows in the DataFrame, sorted by UID."""
     all_labels = []
     
-    df_sorted = df.sort_values(["Brand", "Product Name"], ascending=[True, True])
+    # Sort by Package Label (UID) for consistent ordering
+    df_sorted = df.sort_values(["Package Label"], ascending=[True])
     
     for idx, row in df_sorted.iterrows():
         row_labels = generate_labels_for_row(row, label_mode)
