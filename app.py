@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.1.0 - Distribution Center Package Label Generator
+Version 1.1.2 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,12 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.1.2 (2025-01-15)
+- Added Status filter from Packages import
+
+v1.1.1 (2025-01-15)
+- Labels now sorted by UID (Package Label) for consistent ordering
+
 v1.1.0 (2025-01-15)
 - Added weekly rotating symbol (18-week cycle)
 - Symbols help distinguish batches received at different times
@@ -43,7 +49,7 @@ import streamlit.components.v1 as components
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.1.0"
+VERSION = "1.1.2"
 
 # Label specifications for ZD621 printer
 LABEL_WIDTH = 4.0    # inches
@@ -208,7 +214,7 @@ WEEK_ICONS = {
 # =============================================================================
 
 st.set_page_config(
-    page_title="DC Label Generator",
+    page_title=f"DC Label Generator v{VERSION}",
     page_icon="🏷️",
     layout="wide"
 )
@@ -829,7 +835,7 @@ def create_browser_print_launcher(zpl_data, label_count):
 def main():
     """Main application entry point."""
     
-    st.title("🏷️ DC Label Generator")
+    st.title(f"🏷️ DC Label Generator v{VERSION}")
     st.markdown("**DC Retail** | Generate labels from Distru package exports")
     
     # -------------------------------------------------------------------------
@@ -887,10 +893,33 @@ def main():
             marker = " ← current" if i == current_week else ""
             st.markdown(f"{i}. {icon_name}{marker}")
     
-    # Version info
+    # Changelog
+    with st.sidebar.expander("📋 Version History & Changelog"):
+        st.markdown("""
+        **v1.1.2** (Current)
+        - Added Status filter from Packages import
+        
+        **v1.1.1** (2025-01-15)
+        - Labels now sorted by UID for consistent ordering
+        
+        **v1.1.0** (2025-01-15)
+        - Added weekly rotating symbol (18-week cycle)
+        - 18 icons: house, sun, tree, car, cloud, envelope, 
+          ladder, key, anchor, lightbulb, lock, umbrella, 
+          flag, trashcan, clock, mug, book, rabbit
+        
+        **v1.0.0** (2025-12-19)
+        - Initial release
+        - Package and Products CSV integration
+        - Brand extraction from product names
+        - Vendor filtering from Products data
+        - Quick date selection buttons
+        - Case quantity from Units Per Case
+        """)
+    
+    # Version info at bottom
     st.sidebar.markdown("---")
-    st.sidebar.caption(f"Version {VERSION}")
-    st.sidebar.caption("© 2025 DC Retail")
+    st.sidebar.markdown(f"**Version {VERSION}**")
     
     # -------------------------------------------------------------------------
     # MAIN CONTENT
@@ -1031,6 +1060,29 @@ def main():
                 else:
                     selected_vendors = []
                     st.info("No vendor data available")
+                
+                st.subheader("📊 Filter by Status")
+                
+                all_statuses = sorted(processed_df["Status"].dropna().unique())
+                
+                if all_statuses:
+                    status_filter_type = st.radio(
+                        "Status filter type:",
+                        ["All statuses", "Select statuses"],
+                        horizontal=True
+                    )
+                    
+                    if status_filter_type == "Select statuses":
+                        selected_statuses = st.multiselect(
+                            "Select statuses:",
+                            options=all_statuses,
+                            default=[]
+                        )
+                    else:
+                        selected_statuses = list(all_statuses)
+                else:
+                    selected_statuses = []
+                    st.info("No status data available")
             
             # --- APPLY FILTERS ---
             filtered_df = processed_df.copy()
@@ -1044,6 +1096,9 @@ def main():
             if selected_vendors:
                 filtered_df = filtered_df[filtered_df["Vendor"].isin(selected_vendors)]
             
+            if selected_statuses:
+                filtered_df = filtered_df[filtered_df["Status"].isin(selected_statuses)]
+            
             st.markdown("---")
             
             # --- FILTERED DATA DISPLAY ---
@@ -1053,7 +1108,7 @@ def main():
                 display_cols = [
                     "Brand", "Product (Clean)", "Package Label",
                     "Quantity", "Units Per Case", "Case Labels Needed",
-                    "Batch No", "Category", "Vendor", "Created Date"
+                    "Batch No", "Category", "Status", "Vendor", "Created Date"
                 ]
                 display_cols = [c for c in display_cols if c in filtered_df.columns]
                 
