@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.1.2 - Distribution Center Package Label Generator
+Version 1.1.3 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,10 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.1.3 (2025-01-15)
+- Fixed timezone issue: Now uses Pacific time for date filtering
+- Resolves "Today" showing wrong date on Streamlit Cloud (UTC servers)
+
 v1.1.2 (2025-01-15)
 - Added Status filter from Packages import
 
@@ -43,13 +47,17 @@ import base64
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List
 import streamlit.components.v1 as components
+from zoneinfo import ZoneInfo
 
 
 # =============================================================================
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
+
+# Timezone - always use Pacific time for date filtering
+TIMEZONE = ZoneInfo("America/Los_Angeles")
 
 # Label specifications for ZD621 printer
 LABEL_WIDTH = 4.0    # inches
@@ -356,7 +364,7 @@ def get_week_number(date_value=None):
         if date_value is not None and pd.notna(date_value):
             date_obj = pd.to_datetime(date_value)
         else:
-            date_obj = datetime.now()
+            date_obj = datetime.now(TIMEZONE)
         
         # Get ISO week number (1-52/53)
         iso_week = date_obj.isocalendar()[1]
@@ -896,7 +904,11 @@ def main():
     # Changelog
     with st.sidebar.expander("📋 Version History & Changelog"):
         st.markdown("""
-        **v1.1.2** (Current)
+        **v1.1.3** (Current)
+        - Fixed timezone: Uses Pacific time for dates
+        - Fixes "Today" filter on cloud servers
+        
+        **v1.1.2** (2025-01-15)
         - Added Status filter from Packages import
         
         **v1.1.1** (2025-01-15)
@@ -951,7 +963,8 @@ def main():
                     st.markdown("**Quick Select:**")
                     qcol1, qcol2, qcol3, qcol4 = st.columns(4)
                     
-                    today = datetime.now().date()
+                    # Use Pacific timezone for date calculations
+                    today = datetime.now(TIMEZONE).date()
                     yesterday = today - timedelta(days=1)
                     week_start = today - timedelta(days=today.weekday())
                     
