@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.1.3 - Distribution Center Package Label Generator
+Version 1.1.6 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,24 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.1.6 (2025-01-15)
+- Fixed Status filter to default to only "Active" (not all statuses)
+- Fixed cascading filters to include date filter first
+- Filter cascade order: Date → Status → Brand → Vendor
+- Brand/Vendor lists now only show items matching selected date + status
+
+v1.1.5 (2025-01-15)
+- Redesigned filters: Status → Brand → Vendor (cascading)
+- Filters now cascade - selecting brands limits vendor options
+- Simplified filter UX (removed radio buttons)
+- Status defaults to "Active" on load
+- Hidden row index, reordered columns (Override, Case Qty first)
+
+v1.1.4 (2025-01-15)
+- Added Label Override column for custom label counts per product
+- Changed default date filter to "Today"
+- Changed default status filter to "Active"
+
 v1.1.3 (2025-01-15)
 - Fixed timezone issue: Now uses Pacific time for date filtering
 - Resolves "Today" showing wrong date on Streamlit Cloud (UTC servers)
@@ -54,7 +72,7 @@ from zoneinfo import ZoneInfo
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.1.3"
+VERSION = "1.1.6"
 
 # Timezone - always use Pacific time for date filtering
 TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -238,7 +256,7 @@ def initialize_session_state():
         "processed_data": None,
         "products_data": None,
         "packages_data": None,
-        "date_selection": "all",
+        "date_selection": "today",  # Default to today
         "zpl_content": None,
         "zpl_filename": None,
         "label_count": 0
@@ -729,15 +747,47 @@ def generate_labels_for_row(row, label_mode):
 
 
 def generate_all_labels(df, label_mode):
-    """Generate labels for all rows in the DataFrame, sorted by UID."""
+    """
+    Generate labels for all rows in the DataFrame, sorted by UID.
+    
+    If a row has a "Label Override" value, that exact number of labels is generated.
+    Otherwise, the label_mode determines the count (1 per package or 1 per case).
+    """
     all_labels = []
     
     # Sort by Package Label (UID) for consistent ordering
     df_sorted = df.sort_values(["Package Label"], ascending=[True])
     
     for idx, row in df_sorted.iterrows():
-        row_labels = generate_labels_for_row(row, label_mode)
-        all_labels.extend(row_labels)
+        override = row.get("Label Override")
+        
+        # Check if override is set (not None/NaN and > 0)
+        if pd.notna(override) and int(override) > 0:
+            # Generate the override number of labels
+            override_count = int(override)
+            created_date = row.get("Created At (Full)", "")
+            units_per_case = safe_numeric(row.get("Units_Per_Case_Num", 0))
+            units_per_case_display = units_per_case if units_per_case > 0 else None
+            
+            for _ in range(override_count):
+                zpl = generate_label_zpl(
+                    product_name=row.get("Product Name", ""),
+                    brand=row.get("Brand", ""),
+                    product_clean=row.get("Product (Clean)", ""),
+                    batch_no=row.get("Batch No", ""),
+                    qty=units_per_case_display,
+                    package_label=row.get("Package Label", ""),
+                    category=row.get("Category", ""),
+                    created_date=created_date
+                )
+                all_labels.append(zpl)
+        elif pd.notna(override) and int(override) == 0:
+            # Override of 0 means skip this row
+            continue
+        else:
+            # No override - use normal label mode
+            row_labels = generate_labels_for_row(row, label_mode)
+            all_labels.extend(row_labels)
     
     return all_labels
 
@@ -885,6 +935,9 @@ def main():
             
             if processed_data is not None:
                 st.session_state.processed_data = processed_data
+                # Reset status filter to allow new defaults
+                if "status_filter_selection" in st.session_state:
+                    del st.session_state["status_filter_selection"]
                 st.success(f"Successfully processed {len(processed_data):,} packages")
     
     # Week symbol reference
@@ -904,29 +957,32 @@ def main():
     # Changelog
     with st.sidebar.expander("📋 Version History & Changelog"):
         st.markdown("""
-        **v1.1.3** (Current)
-        - Fixed timezone: Uses Pacific time for dates
-        - Fixes "Today" filter on cloud servers
+        **v1.1.6** (Current)
+        - Fixed Status default to only "Active"
+        - Full cascade: Date → Status → Brand → Vendor
+        
+        **v1.1.5** (2025-01-15)
+        - Cascading filters, simplified UX
+        - Hidden row index, reordered columns
+        
+        **v1.1.4** (2025-01-15)
+        - Added Label Override column
+        - Default date: Today, status: Active
+        
+        **v1.1.3** (2025-01-15)
+        - Fixed timezone (Pacific time)
         
         **v1.1.2** (2025-01-15)
-        - Added Status filter from Packages import
+        - Added Status filter
         
         **v1.1.1** (2025-01-15)
-        - Labels now sorted by UID for consistent ordering
+        - Labels sorted by UID
         
         **v1.1.0** (2025-01-15)
-        - Added weekly rotating symbol (18-week cycle)
-        - 18 icons: house, sun, tree, car, cloud, envelope, 
-          ladder, key, anchor, lightbulb, lock, umbrella, 
-          flag, trashcan, clock, mug, book, rabbit
+        - Weekly rotating symbols (18-week)
         
         **v1.0.0** (2025-12-19)
         - Initial release
-        - Package and Products CSV integration
-        - Brand extraction from product names
-        - Vendor filtering from Products data
-        - Quick date selection buttons
-        - Case quantity from Units Per Case
         """)
     
     # Version info at bottom
@@ -1026,76 +1082,81 @@ def main():
                     selected_dates = []
                     st.warning("No dates found in data")
             
-            # --- BRAND & VENDOR FILTERS ---
+            # --- BRAND, VENDOR, STATUS FILTERS (Cascading from Date) ---
             with col2:
-                st.subheader("🏷️ Filter by Brand")
-                
-                all_brands = sorted(processed_df["Brand"].dropna().unique())
-                
-                if all_brands:
-                    brand_filter_type = st.radio(
-                        "Brand filter type:",
-                        ["All brands", "Select brands"],
-                        horizontal=True
-                    )
-                    
-                    if brand_filter_type == "Select brands":
-                        selected_brands = st.multiselect(
-                            "Select brands:",
-                            options=all_brands,
-                            default=[]
-                        )
-                    else:
-                        selected_brands = list(all_brands)
+                # First, apply date filter to get the base dataset for other filters
+                if selected_dates:
+                    date_filtered_df = processed_df[processed_df["Created Date"].isin(selected_dates)]
                 else:
-                    selected_brands = []
-                    st.warning("No brands found in data")
+                    date_filtered_df = processed_df
                 
-                st.subheader("🏢 Filter by Vendor")
+                # Status filter (cascaded from date)
+                st.subheader("📊 Status")
+                available_statuses = sorted(date_filtered_df["Status"].dropna().unique())
                 
-                all_vendors = sorted(processed_df["Vendor"].dropna().unique())
-                
-                if all_vendors:
-                    vendor_filter_type = st.radio(
-                        "Vendor filter type:",
-                        ["All vendors", "Select vendors"],
-                        horizontal=True
-                    )
+                if available_statuses:
+                    # Use session state to ensure Active is default on first load
+                    status_key = "status_filter_selection"
+                    if status_key not in st.session_state:
+                        st.session_state[status_key] = ["Active"] if "Active" in available_statuses else []
                     
-                    if vendor_filter_type == "Select vendors":
-                        selected_vendors = st.multiselect(
-                            "Select vendors:",
-                            options=all_vendors,
-                            default=[]
-                        )
-                    else:
-                        selected_vendors = list(all_vendors)
-                else:
-                    selected_vendors = []
-                    st.info("No vendor data available")
-                
-                st.subheader("📊 Filter by Status")
-                
-                all_statuses = sorted(processed_df["Status"].dropna().unique())
-                
-                if all_statuses:
-                    status_filter_type = st.radio(
-                        "Status filter type:",
-                        ["All statuses", "Select statuses"],
-                        horizontal=True
-                    )
+                    # If current selection has items not in available options, reset
+                    current_selection = st.session_state.get(status_key, [])
+                    valid_selection = [s for s in current_selection if s in available_statuses]
+                    if not valid_selection and "Active" in available_statuses:
+                        valid_selection = ["Active"]
                     
-                    if status_filter_type == "Select statuses":
-                        selected_statuses = st.multiselect(
-                            "Select statuses:",
-                            options=all_statuses,
-                            default=[]
-                        )
-                    else:
-                        selected_statuses = list(all_statuses)
+                    selected_statuses = st.multiselect(
+                        "Filter by status:",
+                        options=available_statuses,
+                        default=valid_selection,
+                        key=status_key,
+                        help="Defaults to 'Active' packages"
+                    )
+                    if not selected_statuses:
+                        selected_statuses = list(available_statuses)  # If cleared, show all
                 else:
                     selected_statuses = []
-                    st.info("No status data available")
+                
+                # Apply status filter
+                status_filtered_df = date_filtered_df[date_filtered_df["Status"].isin(selected_statuses)] if selected_statuses else date_filtered_df
+                
+                # Brand filter (cascaded from date + status)
+                st.subheader("🏷️ Brand")
+                available_brands = sorted(status_filtered_df["Brand"].dropna().unique())
+                
+                if available_brands:
+                    selected_brands = st.multiselect(
+                        "Filter by brand:",
+                        options=available_brands,
+                        default=[],  # Empty = all brands
+                        placeholder="All brands (click to filter)"
+                    )
+                    if not selected_brands:
+                        selected_brands = list(available_brands)
+                else:
+                    selected_brands = []
+                    st.warning("No brands found")
+                
+                # Apply brand filter to get available vendors
+                brand_filtered_df = status_filtered_df[status_filtered_df["Brand"].isin(selected_brands)] if selected_brands else status_filtered_df
+                
+                # Vendor filter (cascaded from date + status + brand)
+                st.subheader("🏢 Vendor")
+                available_vendors = sorted(brand_filtered_df["Vendor"].dropna().unique())
+                
+                if available_vendors:
+                    selected_vendors = st.multiselect(
+                        "Filter by vendor:",
+                        options=available_vendors,
+                        default=[],  # Empty = all vendors
+                        placeholder="All vendors (click to filter)"
+                    )
+                    if not selected_vendors:
+                        selected_vendors = list(available_vendors)
+                else:
+                    selected_vendors = []
+                    st.info("No vendor data")
             
             # --- APPLY FILTERS ---
             filtered_df = processed_df.copy()
@@ -1118,14 +1179,49 @@ def main():
             st.subheader(f"📦 Filtered Packages ({len(filtered_df):,} records)")
             
             if not filtered_df.empty:
+                # Add Label Override column (None means follow Label Mode)
+                filtered_df = filtered_df.copy()
+                filtered_df.insert(0, "Label Override", None)
+                
                 display_cols = [
-                    "Brand", "Product (Clean)", "Package Label",
-                    "Quantity", "Units Per Case", "Case Labels Needed",
+                    "Label Override", "Case Labels Needed", "Brand", "Product (Clean)", 
+                    "Package Label", "Quantity", "Units Per Case",
                     "Batch No", "Category", "Status", "Vendor", "Created Date"
                 ]
                 display_cols = [c for c in display_cols if c in filtered_df.columns]
                 
-                st.dataframe(filtered_df[display_cols], use_container_width=True, height=400)
+                # Configure column for editing
+                column_config = {
+                    "Label Override": st.column_config.NumberColumn(
+                        "🏷️ Override",
+                        help="Enter custom label count (leave empty to use Label Mode)",
+                        min_value=0,
+                        max_value=100,
+                        step=1,
+                        default=None,
+                        width="small"
+                    ),
+                    "Case Labels Needed": st.column_config.NumberColumn(
+                        "Case Qty",
+                        help="Labels needed based on Units Per Case",
+                        width="small"
+                    )
+                }
+                
+                st.caption("💡 **Tip:** Enter a number in 'Override' to print that many labels for a specific product")
+                
+                edited_df = st.data_editor(
+                    filtered_df[display_cols],
+                    column_config=column_config,
+                    use_container_width=True,
+                    height=400,
+                    num_rows="fixed",
+                    hide_index=True,
+                    disabled=[c for c in display_cols if c != "Label Override"]
+                )
+                
+                # Update filtered_df with edited values
+                filtered_df["Label Override"] = edited_df["Label Override"].values
                 
                 # --- LABEL GENERATION OPTIONS ---
                 st.markdown("---")
@@ -1152,17 +1248,36 @@ def main():
                         sample_icon = get_week_icon_name(sample_week)
                         st.markdown(f"**Week Symbol:** {sample_icon} (wk {sample_week})")
                 
-                # Calculate total labels
+                # Calculate total labels (accounting for overrides)
+                override_labels = 0
+                override_count = 0
+                non_override_df = filtered_df.copy()
+                
+                # Process overrides
+                for idx, row in filtered_df.iterrows():
+                    override = row.get("Label Override")
+                    if pd.notna(override):
+                        override_labels += int(override)
+                        override_count += 1
+                        non_override_df = non_override_df.drop(idx)
+                
+                # Calculate non-override labels based on mode
                 if label_mode_key == "package":
-                    total_labels = len(filtered_df)
+                    mode_labels = len(non_override_df)
                 else:
-                    total_labels = int(filtered_df["Case Labels Needed"].sum())
-                    no_case_data = filtered_df[filtered_df["Units_Per_Case_Num"] == 0]
+                    mode_labels = int(non_override_df["Case Labels Needed"].sum()) if not non_override_df.empty else 0
+                    no_case_data = non_override_df[non_override_df["Units_Per_Case_Num"] == 0]
                     if len(no_case_data) > 0:
                         st.warning(f"⚠️ {len(no_case_data)} packages missing Units Per Case - no labels for these")
                 
+                total_labels = override_labels + mode_labels
+                
                 with gen_col3:
-                    st.metric("Total Labels to Generate", f"{total_labels:,}")
+                    if override_count > 0:
+                        st.metric("Total Labels to Generate", f"{total_labels:,}", 
+                                  delta=f"{override_count} override(s)")
+                    else:
+                        st.metric("Total Labels to Generate", f"{total_labels:,}")
                 
                 # --- GENERATE BUTTONS ---
                 if total_labels > 0:
