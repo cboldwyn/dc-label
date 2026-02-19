@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.1.6 - Distribution Center Package Label Generator
+Version 1.1.7 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,11 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.1.7 (2025-02-19)
+- PATCH: Fixed session state conflict on Status filter multiselect
+- Removed 'default=' parameter when widget uses 'key=' with session state
+- Resolves: "widget created with default value but also had value set via Session State API"
+
 v1.1.6 (2025-01-15)
 - Fixed Status filter to default to only "Active" (not all statuses)
 - Fixed cascading filters to include date filter first
@@ -72,7 +77,7 @@ from zoneinfo import ZoneInfo
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.1.6"
+VERSION = "1.1.7"
 
 # Timezone - always use Pacific time for date filtering
 TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -94,7 +99,7 @@ WEEK_ICONS = {
         "height": 40,
         "bytes_per_row": 5,
         "total_bytes": 200,
-        "hex": "00000000000000000000000008000000000C0000000016000000006300000000C18000000180D6000001007E000002007E00000C007E000018007E000030007E000020007E00004000018001800000C00300000020077FFFFF7007FFFFFFF001800000C001800000C001800000C001800000C001800000C001800000C00180FF80C00180C180C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C001FFFFFFC000FFFFFF800000000000"
+        "hex": "00000000000000000000000008000000000C0000000016000000006300000000C18000000180D6000001007E000002007E00000C007E000018007E000030007E000020007E00004000018001800000C00300000020077FFFFF7007FFFFFFF001800000C001800000C001800000C001800000C001800000C001800000C00180FF80C00180C180C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C00180C080C001FFFFFFC000FFFFFF800000000000"
     },
     2: {
         "name": "sun",
@@ -222,7 +227,7 @@ WEEK_ICONS = {
         "height": 40,
         "bytes_per_row": 5,
         "total_bytes": 200,
-        "hex": "0000000000000000000000000000000000000000000000000000FFFFFE00018C0003C0018C0003F0018C000230018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C00026001FFFFFF800000000000000000000000000000000000000000"
+        "hex": "0000000000000000000000000000000000000000000000000000FFFFFE00018C0003C0018C0003F0018C000230018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C3FC210018C3FC210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C000210018C00026001FFFFFF800000000000000000000000000000000000000000"
     },
     18: {
         "name": "rabbit",
@@ -371,12 +376,6 @@ def get_week_number(date_value=None):
     
     Uses the package created date if provided, otherwise uses current date.
     Symbols rotate on an 18-week cycle.
-    
-    Args:
-        date_value: Optional date string or datetime. If None, uses today.
-        
-    Returns:
-        int: Week number 1-18 for symbol selection
     """
     try:
         if date_value is not None and pd.notna(date_value):
@@ -384,44 +383,27 @@ def get_week_number(date_value=None):
         else:
             date_obj = datetime.now(TIMEZONE)
         
-        # Get ISO week number (1-52/53)
         iso_week = date_obj.isocalendar()[1]
-        
-        # Convert to 1-18 cycle
         return ((iso_week - 1) % 18) + 1
     except (ValueError, TypeError):
-        return 1  # Default to week 1 symbol
+        return 1
 
 
 def get_week_icon_name(week_num):
     """Get the icon name for a given week number."""
-    week_num = ((week_num - 1) % 18) + 1  # Ensure 1-18 range
+    week_num = ((week_num - 1) % 18) + 1
     return WEEK_ICONS.get(week_num, {}).get("name", "unknown")
 
 
 def generate_week_symbol_zpl(week_num, x, y):
-    """
-    Generate ZPL commands to draw the weekly symbol at specified position.
-    
-    Args:
-        week_num: Week number 1-18 (cycles automatically)
-        x: X position in dots
-        y: Y position in dots
-        
-    Returns:
-        String of ZPL commands for the graphic
-    """
-    # Ensure week_num is in 1-18 range
+    """Generate ZPL commands to draw the weekly symbol at specified position."""
     week_num = ((week_num - 1) % 18) + 1
     
     icon = WEEK_ICONS.get(week_num)
     if not icon:
         return ""
     
-    # ZPL ^GF command: Graphic Field
-    # Format: ^GFA,total_bytes,total_bytes,bytes_per_row,hex_data
     zpl = f"^FO{x},{y}^GFA,{icon['total_bytes']},{icon['total_bytes']},{icon['bytes_per_row']},{icon['hex']}^FS"
-    
     return zpl
 
 
@@ -430,9 +412,7 @@ def generate_week_symbol_zpl(week_num, x, y):
 # =============================================================================
 
 def merge_data_sources(packages_df, products_df):
-    """
-    Merge Packages and Products data to create the working dataset.
-    """
+    """Merge Packages and Products data to create the working dataset."""
     try:
         st.session_state.packages_data = packages_df
         st.session_state.products_data = products_df
@@ -511,35 +491,18 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     |                                                      +---+|
     | Batch: ABC-123    [ICON]                    Case Qty: 25  |
     +-----------------------------------------------------------+
-    
-    Args:
-        product_name: Full product name (fallback if product_clean empty)
-        brand: Brand name for top bar
-        product_clean: Cleaned product name (without brand)
-        batch_no: Batch/lot number
-        qty: Units Per Case from Products table (displayed as "Case Qty")
-        package_label: UID for QR code and center display
-        category: Product category for top bar
-        created_date: Package creation date (also used for week symbol selection)
-        
-    Returns:
-        Complete ZPL code string for the label
     """
-    # Calculate dimensions in dots
-    width_dots = int(LABEL_WIDTH * DPI)   # 812 dots
+    width_dots = int(LABEL_WIDTH * DPI)
     
-    # Font size definitions (in dots)
     font_uid = 46
     font_large = 32
     font_large_plus = 28
     font_medium = 24
     font_small_plus = 22
     
-    # Layout positioning (in dots)
     left_margin = 20
     right_margin = 20
     
-    # Vertical positions
     brand_bar_y = 8
     brand_bar_height = 50
     product_y = 70
@@ -548,21 +511,17 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     bottom_y = 360
     qr_y = 120
     
-    # QR code sizing and positioning
     qr_magnification = 5
     qr_box_size = qr_magnification * 30
     qr_x = width_dots - qr_box_size - 15
     
-    # Calculate text width limits
     text_width = width_dots - left_margin - right_margin
     max_chars = int(text_width / (font_large * 0.45))
     
-    # Prepare brand text (truncate if needed)
     brand_display = str(brand) if pd.notna(brand) and brand else ""
     if len(brand_display) > max_chars:
         brand_display = brand_display[:max_chars - 3] + "..."
     
-    # Prepare product text with word wrapping (max 2 lines)
     if pd.notna(product_clean) and product_clean:
         product_display = str(product_clean)
     else:
@@ -597,10 +556,8 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     else:
         product_lines = [product_display]
     
-    # Prepare QR data (UID)
     qr_data = sanitize_qr_data(package_label)
     
-    # Format created date
     created_date_display = ""
     if pd.notna(created_date) and created_date:
         try:
@@ -609,24 +566,20 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         except (ValueError, TypeError):
             created_date_display = str(created_date)
     
-    # Get week number for symbol
     week_num = get_week_number(created_date)
     
-    # Build ZPL command list
     zpl = []
-    zpl.append("^XA")  # Start format
+    zpl.append("^XA")
     
-    # --- BLACK BRAND BAR (inverted colors) ---
+    # Black brand bar
     zpl.append(f"^FO0,{brand_bar_y}^GB{width_dots},{brand_bar_height},{brand_bar_height}^FS")
     
-    # Brand text (white on black via field reverse)
     brand_text_y = brand_bar_y + (brand_bar_height - font_large) // 2
     if brand_display:
         zpl.append("^FR")
         zpl.append(f"^CF0,{font_large}")
         zpl.append(f"^FO{left_margin},{brand_text_y}^FR^FD{brand_display}^FS")
     
-    # Category (right-aligned, white on black)
     if pd.notna(category) and category:
         category_text = str(category)
         category_width = len(category_text) * (font_medium // 2)
@@ -635,14 +588,14 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         zpl.append(f"^CF0,{font_medium}")
         zpl.append(f"^FO{category_x},{category_text_y}^FR^FD{category_text}^FS")
     
-    # --- PRODUCT NAME (below brand bar) ---
+    # Product name
     zpl.append(f"^CF0,{font_large}")
     current_y = product_y
     for line in product_lines:
         zpl.append(f"^FO{left_margin},{current_y}^FD{line}^FS")
         current_y += int(font_large * 1.2)
     
-    # --- UID (left-of-center to avoid QR code, larger font) ---
+    # UID
     if qr_data:
         uid_width = len(qr_data) * (font_uid // 2)
         available_width = qr_x - left_margin - 20
@@ -652,7 +605,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         zpl.append(f"^CF0,{font_uid}")
         zpl.append(f"^FO{uid_x},{uid_y}^FD{qr_data}^FS")
     
-    # --- CREATED DATE (centered in area left of QR code, below UID) ---
+    # Created date
     if created_date_display:
         date_text = f"Created: {created_date_display}"
         date_width = len(date_text) * (font_small_plus // 2)
@@ -663,25 +616,24 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
         zpl.append(f"^CF0,{font_small_plus}")
         zpl.append(f"^FO{date_x},{date_y}^FD{date_text}^FS")
     
-    # --- QR CODE (right side) ---
+    # QR code
     if qr_data:
         zpl.append(f"^FO{qr_x},{qr_y}^BQN,2,{qr_magnification}^FDQA,{qr_data}^FS")
     
-    # --- BATCH NUMBER (bottom left) ---
+    # Batch number
     if pd.notna(batch_no) and batch_no:
         batch_display = str(batch_no)
         zpl.append(f"^CF0,{font_large_plus}")
         zpl.append(f"^FO{left_margin},{bottom_y}^FDBatch: {batch_display}^FS")
     
-    # --- WEEK SYMBOL (bottom center) ---
-    # Position between batch and case qty
+    # Week symbol
     symbol_x = (width_dots // 2) - (WEEK_SYMBOL_SIZE // 2)
-    symbol_y = bottom_y - 4  # Slight vertical adjustment to center with text
+    symbol_y = bottom_y - 4
     week_symbol_zpl = generate_week_symbol_zpl(week_num, symbol_x, symbol_y)
     if week_symbol_zpl:
         zpl.append(week_symbol_zpl)
     
-    # --- CASE QUANTITY (bottom right) ---
+    # Case quantity
     if qty is not None:
         qty_num = safe_numeric(qty, 0)
         if qty_num == int(qty_num):
@@ -696,7 +648,7 @@ def generate_label_zpl(product_name, brand, product_clean, batch_no, qty, packag
     zpl.append(f"^CF0,{font_large_plus}")
     zpl.append(f"^FO{qty_x},{bottom_y}^FD{qty_display}^FS")
     
-    zpl.append("^XZ")  # End format
+    zpl.append("^XZ")
     
     return "\n".join(zpl)
 
@@ -755,15 +707,12 @@ def generate_all_labels(df, label_mode):
     """
     all_labels = []
     
-    # Sort by Package Label (UID) for consistent ordering
     df_sorted = df.sort_values(["Package Label"], ascending=[True])
     
     for idx, row in df_sorted.iterrows():
         override = row.get("Label Override")
         
-        # Check if override is set (not None/NaN and > 0)
         if pd.notna(override) and int(override) > 0:
-            # Generate the override number of labels
             override_count = int(override)
             created_date = row.get("Created At (Full)", "")
             units_per_case = safe_numeric(row.get("Units_Per_Case_Num", 0))
@@ -782,10 +731,8 @@ def generate_all_labels(df, label_mode):
                 )
                 all_labels.append(zpl)
         elif pd.notna(override) and int(override) == 0:
-            # Override of 0 means skip this row
             continue
         else:
-            # No override - use normal label mode
             row_labels = generate_labels_for_row(row, label_mode)
             all_labels.extend(row_labels)
     
@@ -943,7 +890,6 @@ def main():
     # Week symbol reference
     st.sidebar.markdown("---")
     with st.sidebar.expander("🗓️ Week Symbols (18-week cycle)"):
-        # Show current week symbol
         current_week = get_week_number()
         current_icon = get_week_icon_name(current_week)
         st.markdown(f"**Current week:** {current_week} ({current_icon})")
@@ -957,7 +903,11 @@ def main():
     # Changelog
     with st.sidebar.expander("📋 Version History & Changelog"):
         st.markdown("""
-        **v1.1.6** (Current)
+        **v1.1.7** (Current)
+        - Fixed session state conflict on Status filter
+        - Removed dual default/key conflict
+        
+        **v1.1.6** (2025-01-15)
         - Fixed Status default to only "Active"
         - Full cascade: Date → Status → Brand → Vendor
         
@@ -1019,7 +969,6 @@ def main():
                     st.markdown("**Quick Select:**")
                     qcol1, qcol2, qcol3, qcol4 = st.columns(4)
                     
-                    # Use Pacific timezone for date calculations
                     today = datetime.now(TIMEZONE).date()
                     yesterday = today - timedelta(days=1)
                     week_start = today - timedelta(days=today.weekday())
@@ -1090,26 +1039,32 @@ def main():
                 else:
                     date_filtered_df = processed_df
                 
-                # Status filter (cascaded from date)
+                # ============================================================
+                # STATUS FILTER — v1.1.7 FIX
+                # Session state exclusively drives the widget's initial value.
+                # NO default= parameter is used — that caused the conflict.
+                # ============================================================
                 st.subheader("📊 Status")
                 available_statuses = sorted(date_filtered_df["Status"].dropna().unique())
                 
                 if available_statuses:
-                    # Use session state to ensure Active is default on first load
                     status_key = "status_filter_selection"
+                    
+                    # Set default via session state ONLY if key doesn't exist yet
                     if status_key not in st.session_state:
                         st.session_state[status_key] = ["Active"] if "Active" in available_statuses else []
+                    else:
+                        # Prune stale values that are no longer in available options
+                        current_selection = st.session_state[status_key]
+                        valid_selection = [s for s in current_selection if s in available_statuses]
+                        if not valid_selection and "Active" in available_statuses:
+                            valid_selection = ["Active"]
+                        st.session_state[status_key] = valid_selection
                     
-                    # If current selection has items not in available options, reset
-                    current_selection = st.session_state.get(status_key, [])
-                    valid_selection = [s for s in current_selection if s in available_statuses]
-                    if not valid_selection and "Active" in available_statuses:
-                        valid_selection = ["Active"]
-                    
+                    # NO default= parameter — session state handles the initial value
                     selected_statuses = st.multiselect(
                         "Filter by status:",
                         options=available_statuses,
-                        default=valid_selection,
                         key=status_key,
                         help="Defaults to 'Active' packages"
                     )
@@ -1129,7 +1084,7 @@ def main():
                     selected_brands = st.multiselect(
                         "Filter by brand:",
                         options=available_brands,
-                        default=[],  # Empty = all brands
+                        default=[],
                         placeholder="All brands (click to filter)"
                     )
                     if not selected_brands:
@@ -1149,7 +1104,7 @@ def main():
                     selected_vendors = st.multiselect(
                         "Filter by vendor:",
                         options=available_vendors,
-                        default=[],  # Empty = all vendors
+                        default=[],
                         placeholder="All vendors (click to filter)"
                     )
                     if not selected_vendors:
@@ -1179,7 +1134,6 @@ def main():
             st.subheader(f"📦 Filtered Packages ({len(filtered_df):,} records)")
             
             if not filtered_df.empty:
-                # Add Label Override column (None means follow Label Mode)
                 filtered_df = filtered_df.copy()
                 filtered_df.insert(0, "Label Override", None)
                 
@@ -1190,7 +1144,6 @@ def main():
                 ]
                 display_cols = [c for c in display_cols if c in filtered_df.columns]
                 
-                # Configure column for editing
                 column_config = {
                     "Label Override": st.column_config.NumberColumn(
                         "🏷️ Override",
@@ -1220,7 +1173,6 @@ def main():
                     disabled=[c for c in display_cols if c != "Label Override"]
                 )
                 
-                # Update filtered_df with edited values
                 filtered_df["Label Override"] = edited_df["Label Override"].values
                 
                 # --- LABEL GENERATION OPTIONS ---
@@ -1241,7 +1193,6 @@ def main():
                     st.markdown("**Label Size:**")
                     st.info(f"4\" x 2\" at {DPI} DPI")
                     
-                    # Show week symbol for current selection
                     if not filtered_df.empty:
                         sample_date = filtered_df["Created At (Full)"].iloc[0]
                         sample_week = get_week_number(sample_date)
@@ -1253,7 +1204,6 @@ def main():
                 override_count = 0
                 non_override_df = filtered_df.copy()
                 
-                # Process overrides
                 for idx, row in filtered_df.iterrows():
                     override = row.get("Label Override")
                     if pd.notna(override):
@@ -1261,7 +1211,6 @@ def main():
                         override_count += 1
                         non_override_df = non_override_df.drop(idx)
                 
-                # Calculate non-override labels based on mode
                 if label_mode_key == "package":
                     mode_labels = len(non_override_df)
                 else:
