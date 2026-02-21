@@ -2,7 +2,7 @@
 DC Label Generator
 ==================
 
-Version 1.1.7 - Distribution Center Package Label Generator
+Version 1.2.0 - Distribution Center Package Label Generator
 
 Generates ZPL labels from Distru Packages and Products exports for Zebra printers.
 Supports filtering by Created Date, Brand, and Vendor with options for per-package
@@ -11,6 +11,13 @@ or per-case label generation.
 Label Format: 4" x 2" at 203 DPI (ZD621)
 
 CHANGELOG:
+v1.2.0 (2025-02-21)
+- FEATURE: Added Package Search - search/filter by Package Label for quick single-label printing
+- ENHANCEMENT: Streamlined label generation - single-click Generate & Download ZPL
+- ENHANCEMENT: Cleaned up bottom section layout (Label Generation, Export)
+- ENHANCEMENT: Preview Sample Label and CSV Export moved to collapsible sections
+- UI: Compact, professional layout below the data table
+
 v1.1.7 (2025-02-19)
 - PATCH: Fixed session state conflict on Status filter multiselect
 - Removed 'default=' parameter when widget uses 'key=' with session state
@@ -77,7 +84,7 @@ from zoneinfo import ZoneInfo
 # CONFIGURATION CONSTANTS
 # =============================================================================
 
-VERSION = "1.1.7"
+VERSION = "1.2.0"
 
 # Timezone - always use Pacific time for date filtering
 TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -903,9 +910,13 @@ def main():
     # Changelog
     with st.sidebar.expander("📋 Version History & Changelog"):
         st.markdown("""
-        **v1.1.7** (Current)
+        **v1.2.0** (Current)
+        - Package Search for quick single-label printing
+        - Single-click Generate & Download ZPL
+        - Cleaned up bottom section layout
+        
+        **v1.1.7** (2025-02-19)
         - Fixed session state conflict on Status filter
-        - Removed dual default/key conflict
         
         **v1.1.6** (2025-01-15)
         - Fixed Status default to only "Active"
@@ -919,20 +930,11 @@ def main():
         - Added Label Override column
         - Default date: Today, status: Active
         
-        **v1.1.3** (2025-01-15)
-        - Fixed timezone (Pacific time)
-        
-        **v1.1.2** (2025-01-15)
-        - Added Status filter
-        
-        **v1.1.1** (2025-01-15)
-        - Labels sorted by UID
-        
-        **v1.1.0** (2025-01-15)
-        - Weekly rotating symbols (18-week)
-        
-        **v1.0.0** (2025-12-19)
-        - Initial release
+        **v1.1.3** – Pacific timezone fix
+        **v1.1.2** – Status filter
+        **v1.1.1** – Labels sorted by UID
+        **v1.1.0** – Weekly rotating symbols (18-week)
+        **v1.0.0** – Initial release
         """)
     
     # Version info at bottom
@@ -1130,6 +1132,34 @@ def main():
             
             st.markdown("---")
             
+            # --- PACKAGE SEARCH ---
+            search_col1, search_col2 = st.columns([3, 1])
+            with search_col1:
+                package_search = st.text_input(
+                    "🔍 Search by Package Label",
+                    placeholder="Type a Package Label (or partial) to find specific packages...",
+                    help="Search by full or partial Package Label (METRC ID). Useful for quickly printing a single label."
+                )
+            with search_col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if package_search:
+                    clear_search = st.button("✕ Clear Search", use_container_width=True)
+                    if clear_search:
+                        package_search = ""
+            
+            # Apply package search filter
+            if package_search:
+                search_term = package_search.strip()
+                filtered_df = filtered_df[
+                    filtered_df["Package Label"].astype(str).str.contains(search_term, case=False, na=False)
+                ]
+                if len(filtered_df) == 0:
+                    st.warning(f"No packages found matching '{search_term}'")
+                elif len(filtered_df) <= 5:
+                    st.success(f"🎯 Found {len(filtered_df)} package(s) matching '{search_term}'")
+                else:
+                    st.info(f"Found {len(filtered_df):,} packages matching '{search_term}'")
+            
             # --- FILTERED DATA DISPLAY ---
             st.subheader(f"📦 Filtered Packages ({len(filtered_df):,} records)")
             
@@ -1175,29 +1205,21 @@ def main():
                 
                 filtered_df["Label Override"] = edited_df["Label Override"].values
                 
-                # --- LABEL GENERATION OPTIONS ---
+                # =============================================================
+                # LABEL GENERATION — Compact single-click layout
+                # =============================================================
                 st.markdown("---")
-                st.header("🖨️ Label Generation")
                 
-                gen_col1, gen_col2, gen_col3 = st.columns([2, 2, 4])
+                # Row 1: Mode selector + label count + Generate & Download button
+                gen_col1, gen_col2, gen_col3 = st.columns([2, 2, 3])
                 
                 with gen_col1:
                     label_mode = st.selectbox(
                         "Label Mode",
                         ["1 Label per Package", "1 Label per Case"],
-                        help="Package: 1 label per package. Case: Multiple labels based on package qty ÷ units per case."
+                        help="Package: 1 label per package. Case: qty ÷ units per case."
                     )
                     label_mode_key = "package" if "Package" in label_mode else "case"
-                
-                with gen_col2:
-                    st.markdown("**Label Size:**")
-                    st.info(f"4\" x 2\" at {DPI} DPI")
-                    
-                    if not filtered_df.empty:
-                        sample_date = filtered_df["Created At (Full)"].iloc[0]
-                        sample_week = get_week_number(sample_date)
-                        sample_icon = get_week_icon_name(sample_week)
-                        st.markdown(f"**Week Symbol:** {sample_icon} (wk {sample_week})")
                 
                 # Calculate total labels (accounting for overrides)
                 override_labels = 0
@@ -1217,23 +1239,24 @@ def main():
                     mode_labels = int(non_override_df["Case Labels Needed"].sum()) if not non_override_df.empty else 0
                     no_case_data = non_override_df[non_override_df["Units_Per_Case_Num"] == 0]
                     if len(no_case_data) > 0:
-                        st.warning(f"⚠️ {len(no_case_data)} packages missing Units Per Case - no labels for these")
+                        st.warning(f"⚠️ {len(no_case_data)} packages missing Units Per Case")
                 
                 total_labels = override_labels + mode_labels
                 
-                with gen_col3:
-                    if override_count > 0:
-                        st.metric("Total Labels to Generate", f"{total_labels:,}", 
-                                  delta=f"{override_count} override(s)")
-                    else:
-                        st.metric("Total Labels to Generate", f"{total_labels:,}")
+                with gen_col2:
+                    # Show label size and week symbol compactly
+                    st.markdown(f"**Labels:** {total_labels:,}")
+                    st.markdown(f"**Size:** 4\" x 2\" at {DPI} DPI")
+                    if not filtered_df.empty:
+                        sample_date = filtered_df["Created At (Full)"].iloc[0]
+                        sample_week = get_week_number(sample_date)
+                        sample_icon = get_week_icon_name(sample_week)
+                        st.markdown(f"**Symbol:** {sample_icon} (wk {sample_week})")
                 
-                # --- GENERATE BUTTONS ---
-                if total_labels > 0:
-                    btn_col1, btn_col2 = st.columns(2)
-                    
-                    with btn_col1:
-                        if st.button(f"📥 Generate {total_labels} Labels", type="primary", use_container_width=True):
+                with gen_col3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if total_labels > 0:
+                        if st.button(f"🖨️ Generate & Download {total_labels:,} Labels", type="primary", use_container_width=True):
                             try:
                                 with st.spinner("Generating ZPL..."):
                                     labels = generate_all_labels(filtered_df, label_mode_key)
@@ -1247,60 +1270,58 @@ def main():
                                         st.session_state["zpl_content"] = zpl_content
                                         st.session_state["zpl_filename"] = filename
                                         st.session_state["label_count"] = len(labels)
-                                        st.success(f"Generated {len(labels)} labels!")
+                                        st.success(f"✅ Generated {len(labels):,} labels!")
                             except Exception as e:
-                                st.error(f"Error during generation: {str(e)}")
+                                st.error(f"Error: {str(e)}")
+                    else:
+                        st.button("🖨️ No labels to generate", disabled=True, use_container_width=True)
+                
+                # Download button appears immediately after generation
+                if st.session_state.get("zpl_content"):
+                    dl_col1, dl_col2 = st.columns([3, 4])
                     
-                    with btn_col2:
-                        if st.button("👀 Preview Sample Label", use_container_width=True):
+                    with dl_col1:
+                        st.download_button(
+                            label=f"💾 Download ZPL ({st.session_state['label_count']:,} labels)",
+                            data=st.session_state["zpl_content"],
+                            file_name=st.session_state["zpl_filename"],
+                            mime="text/plain",
+                            use_container_width=True,
+                            type="primary"
+                        )
+                    
+                    with dl_col2:
+                        create_browser_print_launcher(
+                            st.session_state["zpl_content"],
+                            st.session_state["label_count"]
+                        )
+                
+                # --- SECONDARY ACTIONS (collapsible) ---
+                with st.expander("🔧 More Options"):
+                    more_col1, more_col2 = st.columns(2)
+                    
+                    with more_col1:
+                        st.markdown("**👀 Preview Sample Label**")
+                        if st.button("Preview ZPL Code", use_container_width=True):
                             if len(filtered_df) > 0:
                                 sample_row = filtered_df.iloc[0]
                                 sample_labels = generate_labels_for_row(sample_row, label_mode_key)
-                                
                                 if sample_labels:
                                     st.code(sample_labels[0], language="text")
                                 else:
                                     st.warning("No label generated for this product")
                     
-                    # Download/Print section
-                    if st.session_state.get("zpl_content"):
-                        st.markdown("---")
-                        st.subheader("💾 Download / Print")
-                        
-                        dl_col1, dl_col2 = st.columns(2)
-                        
-                        with dl_col1:
-                            st.download_button(
-                                label=f"💾 Download ZPL File ({st.session_state['label_count']} labels)",
-                                data=st.session_state["zpl_content"],
-                                file_name=st.session_state["zpl_filename"],
-                                mime="text/plain",
-                                use_container_width=True
-                            )
-                        
-                        with dl_col2:
-                            st.markdown("**Or copy to clipboard:**")
-                        
-                        create_browser_print_launcher(
-                            st.session_state["zpl_content"],
-                            st.session_state["label_count"]
+                    with more_col2:
+                        st.markdown("**📄 Export Filtered Data**")
+                        csv_buffer = io.StringIO()
+                        filtered_df.to_csv(csv_buffer, index=False)
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv_buffer.getvalue(),
+                            file_name=f"dc_packages_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
                         )
-                else:
-                    st.warning("No labels to generate with current selection")
-                
-                # --- CSV EXPORT ---
-                st.markdown("---")
-                st.subheader("💾 Export Data")
-                
-                csv_buffer = io.StringIO()
-                filtered_df.to_csv(csv_buffer, index=False)
-                
-                st.download_button(
-                    label="📄 Download Filtered Data CSV",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"dc_packages_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
-                )
             else:
                 st.warning("No packages match the current filters")
         
@@ -1362,13 +1383,14 @@ def main():
                 
                 **Features:**
                 - 🏷️ **Brand Extraction** - Automatically extracts brand from product names
+                - 🔍 **Package Search** - Search by Package Label for quick single-label printing
                 - 📅 **Quick Date Selection** - Today, Yesterday, This Week buttons
                 - 🏢 **Vendor Filtering** - Filter by vendor from Products data
                 - 📦 **Two Label Modes:**
                     - **1 Label per Package** - Single label per package
                     - **1 Label per Case** - Multiple labels (qty ÷ units per case)
+                - 🖨️ **Single-click Generate & Download** - Streamlined ZPL generation
                 - 🗓️ **Weekly Rotating Symbols** - 18 unique icons that rotate weekly
-                    to help distinguish batches received at different times
                 
                 **Label Layout (4" x 2"):**
                 - Top: Black bar with Brand (white) and Category
